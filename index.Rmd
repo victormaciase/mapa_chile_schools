@@ -1,0 +1,154 @@
+---
+title: "Establecimientos educacionales 2018"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: spacelab
+    orientation: columns
+    vertical_layout: fill
+    source_code: embed
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(leaflet)
+library(dplyr)
+library(readr)
+library(stringr)
+library(ggplot2)
+library(plotly)
+library(RColorBrewer)
+library(DT)
+```
+
+Dependencia Colegios
+================================
+
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+### Mapa
+
+```{r}
+rm(list = ls())
+
+colegios <- read_csv("datos/colegios2018.csv", 
+                         col_types = cols(
+                         LATITUD = col_character(),
+                         LONGITUD = col_character()
+                         )
+                         )
+colegios$LATITUD = as.numeric(str_replace_all(colegios$LATITUD, ",", "."))
+colegios$LONGITUD = as.numeric(str_replace_all(colegios$LONGITUD, ",", "."))
+
+colegios$dependencia = as.factor(colegios$COD_DEPE2)
+colegios2 <- colegios %>% mutate(dependencia = 
+                                   recode_factor(dependencia, 
+                                                 "1" = "Municipal", 
+                                                 "2" = "Part. Subvencionado", 
+                                                 "3" = "Part. Pagado", 
+                                                 "4" = "Corp. Admin. Delegada", 
+                                                 "5" = "Serv. Local Educación"))
+
+pal <- colorFactor(palette = c("red", "blue", "black", "green", "orange"), 
+                   levels = c("Municipal", "Part. Subvencionado", 
+                              "Part. Pagado", "Corp. Admin. Delegada", 
+                              "Serv. Local Educación"))
+
+colegios2 %>% leaflet() %>% addTiles() %>%
+  addCircleMarkers(lng = ~LONGITUD, lat = ~LATITUD, 
+             radius = 1, label = ~as.character(NOM_RBD), 
+             color = ~pal(dependencia)) %>%
+  addLegend(pal = pal,
+            values = c("Municipal", "Part. Subvencionado", 
+                       "Part. Pagado", "Corp. Admin. Delegada", 
+                       "Serv. Local Educación"),
+            opacity = 0.5, 
+            title = "Dependencia", position = "topright") %>%
+  setView(lng = -70.6539, lat = -33.4429, zoom = 12)
+```
+
+Column {data-width=350}
+-----------------------------------------------------------------------
+
+### Número de colegios
+
+```{r}
+num_schools = nrow(colegios2)
+
+valueBox(prettyNum(num_schools, big.mark = "."),
+         caption = "Número de colegios", 
+         icon = 'fa-school')
+```
+
+### % Colegios Municipales en Chile
+
+```{r}
+muni = round(100 * mean(colegios2$dependencia == "Municipal", na.rm = TRUE),1)
+gauge(value = muni,
+      min = 0,
+      max = 100,
+      symbol = '%', 
+      gaugeSectors(colors = "#8C446F")
+      ) 
+```
+
+### Dependencia de colegios por Región
+
+```{r}
+val = c("red", "blue", "black", "green", "orange") 
+lab = c("Municipal", "Part. Subvencionado", "Part. Pagado", "Corp. Admin. Delegada", "Serv. Local Educación")
+
+colegios2$COD_REG_RBD <- as.factor(colegios2$COD_REG_RBD)
+
+colegios2 <- colegios2 %>% mutate(region = recode(COD_REG_RBD, 
+                                                        "1" = "Tarapacá", 
+                                                        "2" = "Antofagasta", 
+                                                        "3" = "Atacama", 
+                                                        "4" = "Coquimbo", 
+                                                        "5" = "Valparaíso",
+                                                        "6" = "O'Higgins",
+                                                        "7" = "Maule",
+                                                        "8" = "Bio-Bío",
+                                                        "9" = "Araucanía",
+                                                        "10" = "Los Lagos",
+                                                        "11" = "Aysén", 
+                                                        "12" = "Magallanes",
+                                                        "13" = "Metropolitana",
+                                                        "14" = "Los Ríos",
+                                                        "15" = "Arica y Parinacota"))
+
+
+g <- colegios2 %>% ggplot(aes(x = region, fill = dependencia)) +  
+  geom_bar(position = position_fill(reverse = TRUE)) +
+  scale_fill_brewer("", palette = "Dark2", labels = lab) +
+  labs(x = "", y = "%") + theme_classic() + 
+  coord_flip() +
+  theme(
+    axis.line.y = element_blank(), 
+    axis.ticks.y = element_blank()
+  )
+
+ggplotly(g)
+```
+
+Datos
+================================
+
+### Tabla de Datos
+
+```{r}
+colegios3 <- colegios2 %>% select(NOM_RBD, region, NOM_COM_RBD, dependencia)
+
+colegios3 <- colegios3 %>% rename(Colegio = NOM_RBD,
+                                  Región = region,
+                                  Comuna = NOM_COM_RBD,
+                                  Dependencia = dependencia)
+  
+datatable(colegios3, rownames = FALSE, filter = 'top',
+          extensions = 'Buttons', options = list(
+            autoWidth = TRUE,
+            dom = 'Bfrtip',
+            buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+            )
+          )
+```
